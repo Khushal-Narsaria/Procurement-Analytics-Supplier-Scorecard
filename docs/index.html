@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Procurement Analytics</title>
+<meta name="description" content="Spend analysis, supplier scorecard and inventory reorder policy on simulated purchasing data.">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root{--bg:#f5f6f4;--card:#fff;--ink:#17211c;--mute:#5f6d66;--line:#dfe5e1;--accent:#0f6b52;--accent2:#c98a12;
+--bad:#c62828;--warn:#d9730d;--ok:#2e7d32;--pref:#0f6b52;--band:rgba(15,107,82,.12)}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#0f1512;--card:#18211d;--ink:#e7eee9;--mute:#9baba3;
+--line:#2a3630;--accent:#4fc3a1;--accent2:#e6b450;--bad:#ef6b6b;--warn:#ff9d4d;--ok:#6cc070;--pref:#4fc3a1;--band:rgba(79,195,161,.16)}}
+:root[data-theme=dark]{--bg:#0f1512;--card:#18211d;--ink:#e7eee9;--mute:#9baba3;--line:#2a3630;--accent:#4fc3a1;--accent2:#e6b450;
+--bad:#ef6b6b;--warn:#ff9d4d;--ok:#6cc070;--pref:#4fc3a1;--band:rgba(79,195,161,.16)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+.wrap{max-width:1180px;margin:0 auto;padding:20px 16px 48px}
+header{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:10px}
+h1{font-size:24px;margin:0 0 4px}
+h2{font-size:16px;margin:0 0 4px}
+.sub{color:var(--mute);margin:0;max-width:760px}
+.sim{background:var(--band);border:1px solid var(--line);border-radius:8px;padding:8px 12px;font-size:13px;margin:12px 0 16px}
+.hint{color:var(--mute);font-size:13px;margin:0 0 12px}
+.links a,button.ghost{color:var(--accent);text-decoration:none;font-weight:600;margin-left:14px;background:none;border:0;cursor:pointer;font:inherit;font-weight:600}
+.grid{display:grid;gap:14px;margin-bottom:14px}
+.kpis{grid-template-columns:repeat(4,1fr)}
+.two{grid-template-columns:1.5fr 1fr}
+.half{grid-template-columns:1fr 1fr}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;min-width:0}
+.kpi .v{font-size:28px;font-weight:700;line-height:1.2}
+.kpi .l{color:var(--mute);font-size:13px}
+.kpi .n{font-size:12px;color:var(--mute);margin-top:4px}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+th{color:var(--mute);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.03em}
+th.sort{cursor:pointer}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+td.wrapc{white-space:normal}
+#sup tr{cursor:pointer}
+#sup td,.suph th{padding:7px 6px;font-size:13.5px}
+#sup tr:hover,#sup tr.sel{background:var(--band)}
+.scroll{max-height:400px;overflow:auto}
+.pill{display:inline-block;padding:1px 9px;border-radius:99px;font-size:12px;font-weight:700;color:#fff}
+.Preferred{background:var(--pref)}.Approved{background:var(--accent2)}.Watch{background:var(--warn)}.Atrisk{background:var(--bad)}
+.Reordernow{background:var(--warn)}.Stockoutrisk{background:var(--bad)}.OK{background:var(--ok)}
+.filters{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.filters button{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:99px;padding:4px 12px;cursor:pointer;font:inherit;font-size:13px}
+.filters button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.chart{position:relative;height:260px}
+.facts{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}
+.facts div{border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+.facts b{display:block;font-size:17px}
+.facts span{font-size:12px;color:var(--mute)}
+.note{font-size:13px;color:var(--mute);padding-left:18px}
+.note li{margin-bottom:4px}
+@media (max-width:860px){.kpis{grid-template-columns:repeat(2,1fr)}.two,.half{grid-template-columns:1fr}.facts{grid-template-columns:repeat(2,1fr)}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div>
+    <h1>Procurement Analytics &amp; Supplier Scorecard</h1>
+    <p class="sub">Where the money goes, which suppliers deliver, where prices can come down and what needs reordering.</p>
+  </div>
+  <div class="links"><button class="ghost" id="theme">Dark mode</button><a href="https://github.com/Khushal-Narsaria/Procurement-Analytics-Supplier-Scorecard">Source on GitHub</a></div>
+</header>
+<div class="sim" id="sim"></div>
+
+<section class="grid kpis" id="kpis"></section>
+
+<section class="grid two">
+  <div class="card">
+    <h2>Supplier scorecard</h2>
+    <p class="hint" id="weights"></p>
+    <p class="hint">Price is the amount paid against the contract price. Click a column heading to sort.</p>
+    <div class="filters" id="filters"></div>
+    <div class="scroll"><table><thead><tr>
+      <th class="sort" data-k="name">Supplier</th><th>Tier</th><th class="num sort" data-k="score">Score</th><th class="num sort" data-k="on_time">On time</th>
+      <th class="num sort" data-k="reject">Rejects</th><th class="num sort" data-k="price_var">Price</th><th class="num sort" data-k="spend">Spend</th>
+    </tr></thead><tbody id="sup"></tbody></table></div>
+  </div>
+  <div class="card">
+    <h2 id="dtitle">Supplier</h2>
+    <p class="hint" id="dsub"></p>
+    <div class="facts" id="facts"></div>
+    <div class="chart" style="height:230px"><canvas id="compChart"></canvas></div>
+  </div>
+</section>
+
+<section class="grid half">
+  <div class="card"><h2>Spend by category</h2><p class="hint">Received value over the two-year period.</p><div class="chart"><canvas id="catChart"></canvas></div></div>
+  <div class="card"><h2>Monthly spend</h2><p class="hint">By order month. The latest month is left out because its orders are still open.</p><div class="chart"><canvas id="monthChart"></canvas></div></div>
+</section>
+
+<section class="grid half">
+  <div class="card">
+    <h2>Savings from consolidating volume</h2>
+    <p class="hint" id="savehint"></p>
+    <div class="scroll" style="max-height:330px"><table><thead><tr><th>Material</th><th>Move volume to</th><th class="num">Saving</th><th class="num">Of item spend</th></tr></thead><tbody id="save"></tbody></table></div>
+  </div>
+  <div class="card">
+    <h2>ABC classification of materials</h2>
+    <p class="hint">A items carry the first 80% of spend and deserve the tightest control.</p>
+    <table><thead><tr><th>Class</th><th class="num">Materials</th><th class="num">Spend</th><th class="num">Share</th></tr></thead><tbody id="abc"></tbody></table>
+    <h2 style="margin-top:18px">Reorder policy backtest</h2>
+    <p class="hint">Policy set on year 1, tested on year 2 demand for all materials.</p>
+    <table><thead><tr><th>Policy</th><th class="num">Fill rate</th><th class="num">Avg stock value</th><th class="num">Orders</th><th class="num">Annual cost</th></tr></thead><tbody id="bt"></tbody></table>
+  </div>
+</section>
+
+<section class="grid" style="grid-template-columns:1fr">
+  <div class="card">
+    <h2>Inventory alerts</h2>
+    <p class="hint">Materials sorted by days of cover. Reorder point = lead-time demand + safety stock at a 95% service level.</p>
+    <div class="filters" id="ifilters"></div>
+    <div class="scroll"><table><thead><tr><th>Material</th><th>Category</th><th>Status</th><th class="num">On hand</th><th class="num">On order</th><th class="num">Reorder point</th><th class="num">Safety stock</th><th class="num">Order qty (EOQ)</th><th class="num">Days of cover</th></tr></thead><tbody id="inv"></tbody></table></div>
+    <ul class="note" id="notes" style="margin-top:14px"></ul>
+  </div>
+</section>
+</div>
+
+<script>
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const months = () => D.spend.by_month.slice(0, -1);
+const inr = v => v >= 1e7 ? '₹' + (v / 1e7).toFixed(v >= 1e9 ? 0 : 1) + ' cr' : v >= 1e5 ? '₹' + (v / 1e5).toFixed(1) + ' lakh' : '₹' + Math.round(v).toLocaleString('en-IN');
+const cls = s => s.replace(/\s/g, '');
+const charts = {};
+let D, tierFilter = 'ALL', invFilter = 'ALERTS', sortKey = 'score', sortDir = -1, selected;
+
+function draw(id, cfg){ if(charts[id]) charts[id].destroy(); charts[id] = new Chart(document.getElementById(id), cfg); }
+function axis(title, money){ const ticks = {color:css('--mute')}; if(money) ticks.callback = v => inr(v);
+  return {title:{display:!!title,text:title,color:css('--mute')}, grid:{color:css('--line')}, ticks}; }
+
+function kpis(){
+  const alerts = D.inventory.items.filter(i => i.status !== 'OK').length, pref = D.suppliers.filter(s => s.tier === 'Preferred').length;
+  const items = [
+    [inr(D.spend.total), 'Total spend analysed', D.counts.po_lines.toLocaleString() + ' purchase-order lines'],
+    [D.spend.pareto_suppliers + ' of ' + D.counts.suppliers, 'Suppliers carry 80% of spend', pref + ' rated Preferred'],
+    [inr(D.savings.total), 'Savings opportunity', D.savings.share_of_spend + '% of spend, by consolidating volume'],
+    [alerts, 'Materials need action', (D.inventory.status['Reorder now'] || 0) + ' to reorder, ' + (D.inventory.status['Stockout risk'] || 0) + ' at stockout risk'],
+  ];
+  document.getElementById('kpis').innerHTML = items.map(i => `<div class="card kpi"><div class="v">${i[0]}</div><div class="l">${i[1]}</div><div class="n">${i[2]}</div></div>`).join('');
+  document.getElementById('sim').innerHTML = `<b>Simulated data.</b> ${D.counts.suppliers} suppliers, ${D.counts.materials} materials and ${D.counts.po_lines.toLocaleString()} purchase-order lines from ${D.period[0]} to ${D.period[1]}, generated with a fixed seed. Supplier names are made up.`;
+  const w = D.weights;
+  document.getElementById('weights').textContent = `Score out of 100 = delivery ${w.delivery * 100}% + quality ${w.quality * 100}% + price ${w.price * 100}% + consistency ${w.consistency * 100}%. Select a row for detail.`;
+}
+
+function suppliers(){
+  const tiers = ['ALL', ...D.tiers.map(t => t.name)];
+  document.getElementById('filters').innerHTML = tiers.map(t => `<button class="${t === tierFilter ? 'on' : ''}" data-t="${t}">${t === 'ALL' ? 'All' : t} (${t === 'ALL' ? D.suppliers.length : D.suppliers.filter(s => s.tier === t).length})</button>`).join('');
+  document.querySelectorAll('#filters button').forEach(b => b.onclick = () => { tierFilter = b.dataset.t; suppliers(); });
+  const rows = D.suppliers.filter(s => tierFilter === 'ALL' || s.tier === tierFilter).sort((a, b) => (a[sortKey] > b[sortKey] ? 1 : -1) * sortDir);
+  document.getElementById('sup').innerHTML = rows.map(s => `<tr data-id="${s.id}" class="${s.id === selected ? 'sel' : ''}"><td>${s.name}</td><td><span class="pill ${cls(s.tier)}">${s.tier}</span></td><td class="num">${s.score.toFixed(1)}</td><td class="num">${s.on_time.toFixed(0)}%</td><td class="num">${s.reject.toFixed(1)}%</td><td class="num">${s.price_var > 0 ? '+' : ''}${s.price_var.toFixed(1)}%</td><td class="num">${inr(s.spend)}</td></tr>`).join('');
+  document.querySelectorAll('#sup tr').forEach(r => r.onclick = () => detail(+r.dataset.id));
+}
+
+function detail(id){
+  selected = id; const s = D.suppliers.find(x => x.id === id);
+  document.querySelectorAll('#sup tr').forEach(r => r.classList.toggle('sel', +r.dataset.id === id));
+  document.getElementById('dtitle').innerHTML = `${s.name} <span class="pill ${cls(s.tier)}">${s.tier}</span>`;
+  document.getElementById('dsub').textContent = `${s.city} · ${s.lines} lines received · ${inr(s.spend)} spend · rank ${D.suppliers.findIndex(x => x.id === id) + 1} of ${D.suppliers.length}`;
+  const f = [[s.score.toFixed(1), 'Overall score'], [s.on_time.toFixed(0) + '%', 'Lines on time'], [s.days_late.toFixed(1) + ' days', 'Average lateness'],
+    [s.reject.toFixed(2) + '%', 'Units rejected'], [(s.price_var > 0 ? '+' : '') + s.price_var.toFixed(2) + '%', 'Paid vs contract'], [s.lead.toFixed(0) + ' days', 'Average lead time']];
+  document.getElementById('facts').innerHTML = f.map(x => `<div><b>${x[0]}</b><span>${x[1]}</span></div>`).join('');
+  const keys = ['delivery', 'quality', 'price', 'consistency'], avg = keys.map(k => D.suppliers.reduce((a, x) => a + x[k], 0) / D.suppliers.length);
+  draw('compChart', {type:'bar', data:{labels:['Delivery', 'Quality', 'Price', 'Consistency'], datasets:[
+    {label:'This supplier', data:keys.map(k => s[k]), backgroundColor:css('--accent')},
+    {label:'All-supplier average', data:avg, backgroundColor:css('--accent2')}]},
+    options:{maintainAspectRatio:false, animation:false, plugins:{legend:{labels:{color:css('--mute')}}}, scales:{x:axis(''), y:{...axis('Component score'), min:0, max:100}}}});
+}
+
+function spend(){
+  draw('catChart', {type:'bar', data:{labels:D.spend.by_category.map(c => c.category), datasets:[{data:D.spend.by_category.map(c => c.spend), backgroundColor:css('--accent')}]},
+    options:{indexAxis:'y', maintainAspectRatio:false, animation:false, plugins:{legend:{display:false}, tooltip:{callbacks:{label:c => inr(c.raw)}}}, scales:{x:axis('', true), y:axis('')}}});
+  draw('monthChart', {type:'line', data:{labels:months().map(m => m.month), datasets:[{data:months().map(m => m.spend), borderColor:css('--accent'), backgroundColor:css('--band'), fill:true, pointRadius:2, tension:.25}]},
+    options:{maintainAspectRatio:false, animation:false, plugins:{legend:{display:false}, tooltip:{callbacks:{label:c => inr(c.raw)}}}, scales:{x:axis(''), y:{...axis('', true), beginAtZero:true}}}});
+  document.getElementById('savehint').textContent = `Moving each material's volume to its cheapest supplier scoring at least ${D.savings.min_score} would save ${inr(D.savings.total)} across ${D.savings.materials} materials. Ten largest shown.`;
+  document.getElementById('save').innerHTML = D.savings.top.map(s => `<tr><td>${s.material}</td><td class="wrapc">${s.to}</td><td class="num">${inr(s.saving)}</td><td class="num">${s.pct.toFixed(1)}%</td></tr>`).join('');
+  document.getElementById('abc').innerHTML = D.spend.abc.map(a => `<tr><td><b>${a.class}</b></td><td class="num">${a.items}</td><td class="num">${inr(a.spend)}</td><td class="num">${a.share}%</td></tr>`).join('');
+  const b = D.inventory.backtest, row = (n, r) => `<tr><td class="wrapc">${n}</td><td class="num">${(r.fill_rate * 100).toFixed(1)}%</td><td class="num">${inr(r.avg_stock_value)}</td><td class="num">${r.orders.toLocaleString()}</td><td class="num">${inr(r.annual_cost)}</td></tr>`;
+  document.getElementById('bt').innerHTML = row('<b>Reorder point + EOQ</b>', b.rop) + row('Fixed order every 30 days', b.calendar);
+}
+
+function inventory(){
+  const opts = [['ALERTS', 'Needs action'], ['ALL', 'All materials']];
+  document.getElementById('ifilters').innerHTML = opts.map(o => `<button class="${o[0] === invFilter ? 'on' : ''}" data-f="${o[0]}">${o[1]} (${o[0] === 'ALL' ? D.inventory.items.length : D.inventory.items.filter(i => i.status !== 'OK').length})</button>`).join('');
+  document.querySelectorAll('#ifilters button').forEach(b => b.onclick = () => { invFilter = b.dataset.f; inventory(); });
+  const rows = D.inventory.items.filter(i => invFilter === 'ALL' || i.status !== 'OK');
+  document.getElementById('inv').innerHTML = rows.map(i => `<tr><td>${i.name}</td><td>${i.category}</td><td><span class="pill ${cls(i.status)}">${i.status}</span></td><td class="num">${i.on_hand.toLocaleString()}</td><td class="num">${i.on_order.toLocaleString()}</td><td class="num">${i.reorder_point.toLocaleString()}</td><td class="num">${i.safety_stock.toLocaleString()}</td><td class="num">${i.eoq.toLocaleString()}</td><td class="num">${i.days_cover}</td></tr>`).join('');
+  const a = D.inventory.assumptions, b = D.inventory.backtest, r = D.recovery;
+  document.getElementById('notes').innerHTML = [
+    `Backtest: the reorder-point policy held ${Math.round(100 * (1 - b.rop.avg_stock_value / b.calendar.avg_stock_value))}% less stock and cost ${Math.round(100 * (1 - b.rop.annual_cost / b.calendar.annual_cost))}% less per year than fixed 30-day ordering, with a fill rate of ${(b.rop.fill_rate * 100).toFixed(1)}% against ${(b.calendar.fill_rate * 100).toFixed(1)}%. It placed more orders.`,
+    `Assumptions: ₹${a.order_cost.toLocaleString('en-IN')} per order, holding cost ${a.holding_rate * 100}% of unit price per year, ${a.service_level * 100}% service level.`,
+    `Check on the scorecard: measured supplier metrics rank suppliers almost exactly as the simulator's hidden behaviour does (rank correlation ${r.on_time.toFixed(2)} for on-time delivery, ${r.reject_rate.toFixed(2)} for rejects, ${r.price.toFixed(2)} for price).`,
+    `Scorecard weights, tier cut-offs and cost assumptions are project choices and are set in one file.`,
+  ].map(t => `<li>${t}</li>`).join('');
+}
+
+function render(){ kpis(); suppliers(); spend(); inventory(); detail(selected); }
+document.querySelectorAll('th.sort').forEach(th => th.onclick = () => { const k = th.dataset.k; sortDir = k === sortKey ? -sortDir : (k === 'name' ? 1 : -1); sortKey = k; suppliers(); });
+document.getElementById('theme').onclick = e => {
+  const dark = (document.documentElement.dataset.theme || (matchMedia('(prefers-color-scheme:dark)').matches ? 'dark' : 'light')) !== 'dark';
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light'; e.target.textContent = dark ? 'Light mode' : 'Dark mode'; render();
+};
+fetch('data.json').then(r => r.json()).then(d => { D = d; selected = d.suppliers[0].id; render(); });
+</script>
+</body>
+</html>
